@@ -37,13 +37,20 @@ final class StripperEntities {
         number(host, "entities_served", "Entities served", null, status.entitiesServed);
         number(host, "connections", "Stripper connections", null, status.connections);
         number(host, "not_sent_pct", "Traffic not sent", "%", status.notSentPct);
-        number(host, "not_sent_bytes", "Bytes not sent", "B", status.notSentBytes);
-        number(host, "from_ha_bytes", "Bytes from Home Assistant", "B", status.fromHaBytes);
-        number(host, "to_browser_bytes", "Bytes to this panel", "B", status.toBrowserBytes);
-        number(host, "update_bytes_per_min", "Update throughput", "B/min", status.updateBytesPerMin);
+
+        // The three traffic totals in the order they happen: what Home
+        // Assistant sent, what the proxy cut out of it, and what was left to
+        // forward. from = trimmed + forwarded, and reading them in that order
+        // makes that arithmetic obvious rather than something to work out
+        // from three names that each described the same bytes differently.
+        bytes(host, "from_ha_bytes", "Data from Home Assistant", status.fromHaBytes);
+        bytes(host, "not_sent_bytes", "Data trimmed", status.notSentBytes);
+        bytes(host, "to_browser_bytes", "Data forwarded", status.toBrowserBytes);
+
+        rate(host, "update_bytes_per_min", "Update throughput", status.updateBytesPerMin);
         number(host, "first_payload_ms", "First entity data", "ms", status.firstPayloadMsToData);
-        number(host, "first_payload_bytes", "First payload size", "B", status.firstPayloadBytes);
-        number(host, "uptime_sec", "Stripper uptime", "s", status.uptimeSec);
+        bytes(host, "first_payload_bytes", "First payload size", status.firstPayloadBytes);
+        seconds(host, "uptime_sec", "Stripper uptime", status.uptimeSec);
     }
 
     /** Nothing is known: publish unknowns rather than leaving stale numbers. */
@@ -119,9 +126,38 @@ final class StripperEntities {
     // ---- Host wrappers, each tolerant of an older host ----
 
     private static void number(PluginHost host, String key, String name, String unit, Number state) {
+        number(host, key, name, unit, null, state);
+    }
+
+    /**
+     * A byte total, published in bytes and declared as one.
+     *
+     * <p>Base units on purpose. A Home Assistant statistic whose unit slides
+     * from KB to MB as the number grows is a broken statistic, so the figure
+     * stays in bytes and the host rescales it for display -- 13483830 B reads
+     * as 12.9 MB on the panel and in Remote Admin while the sensor underneath
+     * never changes unit.
+     */
+    private static void bytes(PluginHost host, String key, String name, Number state) {
+        number(host, key, name, "B", "data_size", state);
+    }
+
+    /** A byte rate. The denominator is part of the unit and survives rescaling. */
+    private static void rate(PluginHost host, String key, String name, Number state) {
+        number(host, key, name, "B/min", "data_rate", state);
+    }
+
+    /** A span of time in seconds, shown as `7m 8s` rather than `428 s`. */
+    private static void seconds(PluginHost host, String key, String name, Number state) {
+        number(host, key, name, "s", "duration", state);
+    }
+
+    private static void number(
+            PluginHost host, String key, String name, String unit, String deviceClass, Number state) {
         try {
             final Map<String, Object> metadata = new HashMap<>();
             if (unit != null) metadata.put("unit", unit);
+            if (deviceClass != null) metadata.put("deviceClass", deviceClass);
             metadata.put("accuracyDecimals", 0);
             host.publishSensor(key, name, metadata, state == null ? null : state.doubleValue());
         } catch (Throwable ignored) {

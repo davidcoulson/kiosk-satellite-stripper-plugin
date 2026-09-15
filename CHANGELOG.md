@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.0
+
+Readable figures. **Renames three entities** — see the note at the end.
+
+- **Byte totals are declared as `data_size` and time spans as `duration`,** so
+  the host renders them at a human scale: `12.9 MB` rather than `13483830 B`,
+  `7m 8s` rather than `428 s`. The values published are unchanged and still in
+  base units, which is the point — a Home Assistant statistic whose unit slides
+  from KB to MB as the number grows is a broken statistic, so the rescaling
+  belongs in the display, not the sensor. Needs a Kiosk Satellite build that
+  understands those device classes; an older host shows the raw figure as before.
+- The throughput rate keeps its denominator: `9.1 KB/min`, never `9.1 KB`.
+- **The three traffic totals are renamed and reordered** to read in the order
+  they happen, so that `from = trimmed + forwarded` is obvious instead of
+  something to work out from three names that each described the same bytes
+  differently:
+
+  | Was | Now |
+  | --- | --- |
+  | Bytes from Home Assistant | **Data from Home Assistant** |
+  | Bytes not sent | **Data trimmed** |
+  | Bytes to this panel | **Data forwarded** |
+
+  Home Assistant derives an entity id from the name, so these arrive as new
+  entities and the three old ones are left behind as unavailable. Delete them
+  from Settings → Devices & services → Entities; any history on them does not
+  carry over.
+
 ## 0.2.1
 
 - **The state sensor now agrees with the tile.** 0.2.0 gave `401` and `403`

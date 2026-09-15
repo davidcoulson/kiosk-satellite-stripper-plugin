@@ -22,9 +22,15 @@ panel. A panel with no proxy in front of it reads `Disabled` — which is a
 different thing from the panel being unable to reach anything at all.
 
 And the numbers as **Home Assistant entities**: entities served, the not-sent
-percentage and byte totals, first-payload timing, connection count, the
-Stripper's version and uptime, which dashboard this panel was attributed to
-and how, and a text sensor listing what is being trimmed.
+percentage, the three traffic totals (data from Home Assistant, data trimmed,
+data forwarded), first-payload timing, connection count, the Stripper's version
+and uptime, which dashboard this panel was attributed to and how, and a text
+sensor listing what is being trimmed.
+
+Byte totals are published in bytes and time spans in seconds, declared as
+`data_size` and `duration`, and the host renders them at a readable scale —
+`12.9 MB`, `7m 8s`. The sensors stay in base units deliberately: a statistic
+whose unit slides from KB to MB as the number grows is a broken statistic.
 
 ## Detection
 

@@ -3,7 +3,7 @@
   "apiVersion": 1,
   "id": "stripper-plugin",
   "name": "WebSocket Stripper",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "minAndroidSdk": 24,
   "entryClass": "me.jxl.kiosk.plugins.stripper.StripperPlugin",
   "description": "Reports what the HA WebSocket Stripper is doing in front of this panel: whether it is in the path at all, what it is trimming, how many entities this panel is served, and how much traffic it was spared. Publishes the numbers as Home Assistant entities and a status tile on the Overview. Read-only diagnostics; nothing here changes how the panel behaves.",
