@@ -32,6 +32,10 @@ jobs:
           java-version: '21'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          # Default is 'tools platform-tools'; the legacy 'tools' package is
+          # gone from the current cmdline-tools and the action fails on it.
+          packages: platform-tools
       - name: Install Android build tools
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Test
