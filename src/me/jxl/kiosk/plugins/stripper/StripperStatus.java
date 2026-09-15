@@ -11,10 +11,12 @@ import java.util.Map;
  *
  * <p>The endpoint's own contract drives the shape here. Reaching it at all is
  * the proof that the proxy is in front of this panel, so the HTTP status is
- * the answer rather than anything in the body: 200 means trimmed, 404 means
- * Home Assistant answered directly and has no such route, and a transport
- * failure means neither was reached — a network fault, which is a different
- * thing to say to someone than "not behind the trimmer".
+ * the answer rather than anything in the body. 404 is the only reply that
+ * means "no proxy here" — Home Assistant has no such route. 401 and 403 are
+ * refusals from the proxy itself and so are still positive detections: the
+ * trimmer is in front of this panel, it just will not say what it is doing.
+ * A transport failure means neither was reached — a network fault, which is
+ * a different thing to say to someone than "not behind the trimmer".
  *
  * <p>Every field under {@code client} is nullable by contract, and null there
  * means "not known", never zero. That distinction survives into the entities:
@@ -31,6 +33,10 @@ public final class StripperStatus {
         TRIMMED,
         /** 404: Home Assistant answered. No proxy in front of this panel. */
         DIRECT,
+        /** 401: in the path, but the token was missing or not accepted. */
+        UNAUTHORISED,
+        /** 403: in the path, but it does not answer callers from here. */
+        BLOCKED,
         /** Nothing answered. A network problem, not a Stripper problem. */
         UNREACHABLE,
         /** Reached it, but it answered with something unusable. */
@@ -40,6 +46,12 @@ public final class StripperStatus {
     public final State state;
     /** HTTP status when there was one, else 0. */
     public final int httpStatus;
+    /**
+     * The {@code error} field a 403 carries, saying why this caller was
+     * refused. Null for every other state, and never shown raw in the tile —
+     * it is the proxy's wording, not ours, and the tile has 80 characters.
+     */
+    public final String refusal;
 
     public final boolean running;
     public final String version;
@@ -67,8 +79,13 @@ public final class StripperStatus {
     public final Long updateBytesPerMin;
 
     private StripperStatus(State state, int httpStatus, Map<String, Object> root) {
+        this(state, httpStatus, root, null);
+    }
+
+    private StripperStatus(State state, int httpStatus, Map<String, Object> root, String refusal) {
         this.state = state;
         this.httpStatus = httpStatus;
+        this.refusal = refusal;
 
         final Map<String, Object> stripper = obj(root, "stripper");
         this.running = Boolean.TRUE.equals(bool(stripper, "running"));
@@ -125,6 +142,31 @@ public final class StripperStatus {
         return new StripperStatus(State.DIRECT, 404, null);
     }
 
+    /**
+     * 401. The proxy answered, so it is in the path; it wants the panel's
+     * Home Assistant token and did not get one it accepted.
+     */
+    public static StripperStatus unauthorised() {
+        return new StripperStatus(State.UNAUTHORISED, 401, null);
+    }
+
+    /**
+     * 403. The proxy answered and refused this caller — the request arrived
+     * from the internet or through Cloudflare and the instance answers local
+     * callers only. {@code body} is the reply, whose {@code error} field says
+     * which; a body that will not parse is not worth failing over.
+     */
+    public static StripperStatus blocked(String body) {
+        String reason = null;
+        try {
+            final Object value = Json.parseObject(body).get("error");
+            if (value instanceof String && !((String) value).isEmpty()) reason = (String) value;
+        } catch (RuntimeException unparseable) {
+            // The status is the answer; the sentence explaining it is a bonus.
+        }
+        return new StripperStatus(State.BLOCKED, 403, null, reason);
+    }
+
     public static StripperStatus unreachable() {
         return new StripperStatus(State.UNREACHABLE, 0, null);
     }
@@ -133,7 +175,19 @@ public final class StripperStatus {
         return new StripperStatus(State.ERROR, httpStatus, null);
     }
 
+    /**
+     * Whether the proxy is in front of this panel at all. True for every
+     * reply that came from the proxy, including the two refusals: a panel
+     * that is told "not authorised" is still a panel behind the trimmer, and
+     * reporting it as "no proxy here" would send someone looking in the
+     * wrong place entirely.
+     */
     public boolean inPath() {
+        return state == State.TRIMMED || state == State.UNAUTHORISED || state == State.BLOCKED;
+    }
+
+    /** Whether the figures below are actually populated. */
+    public boolean reporting() {
         return state == State.TRIMMED;
     }
 
@@ -144,7 +198,7 @@ public final class StripperStatus {
      * from a different address than it fetches from.
      */
     public boolean idle() {
-        return inPath() && connections != null && connections == 0;
+        return reporting() && connections != null && connections == 0;
     }
 
     /** The trim flags that are on, for a short chip row. */
@@ -157,41 +211,53 @@ public final class StripperStatus {
     }
 
     /**
-     * The status tile's one line, inside the host's 80 character limit.
+     * The status tile's one line.
      *
-     * <p>Leads with the number people actually want. The percentage is the
-     * connection's own {@code not_sent}, which the API is explicit is not the
-     * Stripper's headline "saved" figure, so it is worded as what was not
-     * sent to this panel rather than as a saving.
+     * <p>Written for where it is actually read: a row in the kiosk drawer
+     * and Remote Admin's Overview, next to "Validated" and "Entities and BT
+     * proxy", with room for roughly thirty characters before the panel
+     * elides it. So this leads with the one number that justifies the proxy
+     * existing — how much of Home Assistant's traffic never had to cross to
+     * this panel — and leaves the byte totals, the dashboard attribution and
+     * the trim flags to the plugin's own page, where there is room.
+     *
+     * <p>The percentage is this connection's own {@code not_sent}, which the
+     * API is explicit is not the Stripper's headline "saved" figure, so it is
+     * worded as traffic dropped for this panel rather than as a saving.
      */
     public String tileText() {
         switch (state) {
             case DIRECT:
-                return "Not behind the trimmer";
+                return "Disabled";
+            case UNAUTHORISED:
+                return "Needs an access token";
+            case BLOCKED:
+                return "Not answering this panel";
             case UNREACHABLE:
-                return "Cannot reach the panel's Home Assistant URL";
+                return "Cannot reach Home Assistant";
             case ERROR:
                 return "Unexpected reply" + (httpStatus > 0 ? " (HTTP " + httpStatus + ")" : "");
             default:
                 break;
         }
-        if (idle()) return "In the path, no websocket from this panel yet";
+        if (idle()) return "On, no connection yet";
 
         final StringBuilder text = new StringBuilder();
-        if (entitiesServed != null) text.append(entitiesServed).append(" entities");
-        if (notSentPct != null) {
+        if (notSentPct != null) text.append(notSentPct).append("% dropped");
+        if (entitiesServed != null) {
             if (text.length() > 0) text.append(" · ");
-            text.append(notSentPct).append("% not sent");
+            text.append(entitiesServed).append(" entities");
         }
-        if (dashboard != null && !dashboard.isEmpty()) {
-            if (text.length() > 0) text.append(" · ");
-            text.append(dashboard);
-        }
-        if (text.length() == 0) text.append("Trimming, no figures yet");
+        if (text.length() == 0) text.append("On, no figures yet");
         return text.length() <= 80 ? text.toString() : text.substring(0, 80);
     }
 
-    /** on when it is trimming, warn when it is in the path but idle or odd. */
+    /**
+     * on when it is trimming and has the figures to show for it; off when
+     * there is no proxy in the path, which is a settled state rather than a
+     * fault; warn for everything in between — in the path but silent, idle,
+     * or unreachable.
+     */
     public String tileLevel() {
         switch (state) {
             case TRIMMED:

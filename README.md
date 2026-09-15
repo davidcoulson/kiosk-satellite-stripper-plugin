@@ -12,10 +12,13 @@ Read-only. Nothing here changes how the panel behaves.
 A **status tile on the Overview** — the one line worth having:
 
 ```
-WebSocket Stripper    88 entities · 71% not sent · office-tablet
+WebSocket Stripper    80% dropped · 214 entities
 ```
 
-or `Not behind the trimmer` when Home Assistant answered directly, which is a
+It shares a narrow row with "Validated" and "Entities and BT proxy" and elides
+after roughly thirty characters, so it leads with the figure that justifies the
+proxy existing: how much of Home Assistant's traffic never had to cross to this
+panel. A panel with no proxy in front of it reads `Disabled` — which is a
 different thing from the panel being unable to reach anything at all.
 
 And the numbers as **Home Assistant entities**: entities served, the not-sent
@@ -32,8 +35,14 @@ answer:
 | Result | Meaning |
 | --- | --- |
 | `200` | The Stripper is running **and in the path** for this panel |
+| `401` | In the path, but the access token is missing or was not accepted |
+| `403` | In the path, but it does not answer callers from here |
 | `404` | Home Assistant answered directly. No proxy in front of this panel |
 | No answer | Neither was reachable — a network fault, reported as its own state |
+
+`401` and `403` are refusals from the proxy itself, so both still prove it is in
+front of this panel. Reporting either as "no proxy here" would send someone
+looking in the wrong place.
 
 A fourth state matters and is shown separately: `connections: 0` means the
 proxy *is* in the path but holds no websocket from this panel's address,
@@ -44,6 +53,7 @@ usually because the panel has not opened one yet.
 | Setting | Default | Notes |
 | --- | --- | --- |
 | Stripper base URL | empty | Empty uses the panel's own Home Assistant URL, which is normally right. The port is never assumed |
+| Access token | empty | Required from Stripper `2026.09.15.25`, which answers `401` without one. A long-lived access token from your Home Assistant profile; Kiosk Satellite masks it on the settings row |
 | Refresh interval | 120s | The endpoint takes a stats snapshot per call, so this is deliberately slow. `0` reads only on demand |
 | Request timeout | 2000ms | A diagnostics read must not hang when the proxy is busy |
 
@@ -75,8 +85,14 @@ security-sensitive on it. So:
 Kiosk Satellite with plugin SDK 1. No root, no Shizuku. Capabilities used are
 `host.read` (to learn the panel's Home Assistant URL) and `entities`.
 
-The Stripper must be on `2026.09.15.21` or newer — that is the build the
-status endpoint was added in.
+The Stripper must be on `2026.09.15.21` or newer — that is the build the status
+endpoint was added in. From `2026.09.15.25` the endpoint also requires a Home
+Assistant access token, set above.
+
+The token is a plugin setting rather than the panel's own: Kiosk Satellite does
+not hand a plugin the token it uses for Home Assistant, which is the right call
+— a diagnostics reader has no business holding the credential that can drive the
+house.
 
 ## Licence
 

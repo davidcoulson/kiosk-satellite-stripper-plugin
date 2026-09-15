@@ -37,19 +37,46 @@ public final class StripperStatusTest {
         // null: publishing 0 would turn "we decline to guess" into a reading.
         assertTrue(ok.updateBytesPerMin == null, "update rate stays null");
 
-        // The tile is the headline. Leads with entities, the number people
-        // want, and stays inside the host's 80 character cap.
+        // The tile shares a narrow row with "Validated" and elides after
+        // roughly thirty characters, so it leads with the figure that
+        // justifies the proxy -- what never crossed to this panel -- and
+        // leaves the rest to the plugin's own page.
         final String tile = ok.tileText();
-        assertTrue(tile.startsWith("88 entities"), "tile leads with entities: " + tile);
-        assertTrue(tile.contains("71% not sent"), "tile carries the percentage: " + tile);
-        assertTrue(tile.length() <= 80, "tile within 80 chars");
+        assertTrue(tile.startsWith("71% dropped"), "tile leads with the drop: " + tile);
+        assertTrue(tile.contains("88 entities"), "tile carries the entity count: " + tile);
+        assertTrue(tile.length() <= 30, "tile short enough not to elide in the drawer: " + tile);
         assertTrue("on".equals(ok.tileLevel()), "trimming reads as on");
 
         // 404: Home Assistant answered, so there is no proxy in the path.
         final StripperStatus direct = StripperStatus.direct();
         assertTrue(direct.state == StripperStatus.State.DIRECT && !direct.inPath(), "404 is direct");
         assertTrue("off".equals(direct.tileLevel()), "direct reads as off");
-        assertTrue("Not behind the trimmer".equals(direct.tileText()), "direct wording");
+        assertTrue("Disabled".equals(direct.tileText()), "direct wording");
+
+        // 401 and 403 come from the proxy, so both are positive detections:
+        // reporting either as "no proxy here" sends someone looking in the
+        // wrong place. Neither carries figures.
+        final StripperStatus unauthorised = StripperStatus.unauthorised();
+        assertTrue(unauthorised.inPath(), "401 still means the proxy is in the path");
+        assertTrue(!unauthorised.reporting(), "401 carries no figures");
+        assertTrue("warn".equals(unauthorised.tileLevel()), "401 warns");
+        assertTrue(unauthorised.tileText().contains("token"), "401 says what is missing");
+        assertTrue(!unauthorised.tileText().equals(direct.tileText()), "401 is not worded as direct");
+
+        final StripperStatus blocked = StripperStatus.blocked(
+            "{\"error\":\"status requests are answered for local callers only\"}");
+        assertTrue(blocked.inPath() && !blocked.reporting(), "403 is in path, no figures");
+        assertTrue("warn".equals(blocked.tileLevel()), "403 warns");
+        assertTrue(blocked.refusal != null && blocked.refusal.contains("local callers"),
+            "403 keeps the proxy's own reason for the plugin page");
+        assertTrue(!blocked.tileText().contains("local callers"),
+            "the tile does not carry the proxy's sentence; the page does");
+
+        // A refusal with no readable body is still a refusal.
+        final StripperStatus bodyless = StripperStatus.blocked(null);
+        assertTrue(bodyless.state == StripperStatus.State.BLOCKED && bodyless.refusal == null,
+            "403 survives an unparseable body");
+        assertTrue(StripperStatus.blocked("not json").refusal == null, "and a non-JSON one");
 
         // Nothing answered. A different thing to say than "not trimmed".
         final StripperStatus gone = StripperStatus.unreachable();
@@ -64,6 +91,7 @@ public final class StripperStatusTest {
             + "\"attributed_via\":null,\"entities_served\":null,\"first_payload\":null,"
             + "\"traffic\":null,\"connected_sec\":null}}");
         assertTrue(idle.inPath() && idle.idle(), "zero connections is idle, still in path");
+        assertTrue(idle.tileText().startsWith("On,"), "idle reads as on-but-waiting: " + idle.tileText());
         assertTrue("warn".equals(idle.tileLevel()), "idle warns rather than reading as on");
         assertTrue(idle.entitiesServed == null && idle.notSentPct == null, "nulls stay null");
         assertTrue(idle.trimming.get("entities"), "trimming still populated when idle");
@@ -88,8 +116,9 @@ public final class StripperStatusTest {
         }
         assertTrue(threw, "malformed JSON throws for the caller to handle");
 
-        System.out.println("PASS: status parsing — documented sample, the four states, "
-            + "connections:0 as its own state, nulls preserved, additive schema tolerated.");
+        System.out.println("PASS: status parsing — documented sample, all six states, "
+            + "401/403 as positive detections, connections:0 as its own state, "
+            + "nulls preserved, additive schema tolerated.");
     }
 
     private static void assertTrue(boolean condition, String what) {

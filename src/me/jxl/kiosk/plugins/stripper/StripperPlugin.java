@@ -155,9 +155,15 @@ public final class StripperPlugin implements KioskPlugin {
             connection.setUseCaches(false);
             connection.setRequestProperty("Cache-Control", "no-store");
             connection.setRequestProperty("Accept", "application/json");
+            final String token = text("accessToken");
+            if (token != null && !token.trim().isEmpty()) {
+                connection.setRequestProperty("Authorization", "Bearer " + token.trim());
+            }
 
             final int status = connection.getResponseCode();
             if (status == 404) return StripperStatus.direct();
+            if (status == 401) return StripperStatus.unauthorised();
+            if (status == 403) return StripperStatus.blocked(readError(connection));
             if (status != 200) return StripperStatus.error(status);
             try (InputStream stream = connection.getInputStream()) {
                 return StripperStatus.trimmed(read(stream));
@@ -168,6 +174,18 @@ public final class StripperPlugin implements KioskPlugin {
             return StripperStatus.error(0);
         } finally {
             if (connection != null) connection.disconnect();
+        }
+    }
+
+    /**
+     * The body of a refusal, which lives on the error stream rather than the
+     * input stream. Best effort: a 403 with no readable body is still a 403.
+     */
+    private static String readError(HttpURLConnection connection) {
+        try (InputStream stream = connection.getErrorStream()) {
+            return stream == null ? null : read(stream);
+        } catch (java.io.IOException unreadable) {
+            return null;
         }
     }
 
@@ -198,7 +216,10 @@ public final class StripperPlugin implements KioskPlugin {
         }
         tile(status.tileLevel(), status.tileText());
         StripperEntities.publish(host, status);
-        host.status(statusLine(status), status.state == StripperStatus.State.UNREACHABLE);
+        host.status(statusLine(status),
+            status.state == StripperStatus.State.UNREACHABLE
+                || status.state == StripperStatus.State.UNAUTHORISED
+                || status.state == StripperStatus.State.BLOCKED);
     }
 
     private String statusLine(StripperStatus status) {
@@ -206,9 +227,16 @@ public final class StripperPlugin implements KioskPlugin {
             case TRIMMED:
                 return "Trimmed by WebSocket Stripper"
                     + (status.version != null ? " " + status.version : "")
-                    + " — " + status.tileText();
+                    + " — " + status.tileText()
+                    + (status.dashboard != null ? " · " + status.dashboard : "");
             case DIRECT:
                 return "Talking to Home Assistant directly; no Stripper in the path.";
+            case UNAUTHORISED:
+                return "The Stripper is in the path but wants this panel's Home Assistant "
+                    + "access token. Paste one into the plugin's Access token setting.";
+            case BLOCKED:
+                return "The Stripper is in the path but will not answer this panel"
+                    + (status.refusal != null ? ": " + status.refusal : ".");
             case UNREACHABLE:
                 return "Could not reach " + (dashboardBase != null ? dashboardBase : "Home Assistant") + ".";
             default:
