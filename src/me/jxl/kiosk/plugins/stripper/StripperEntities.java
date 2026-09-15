@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: Apache-2.0
+package me.jxl.kiosk.plugins.stripper;
+
+import java.util.HashMap;
+import java.util.Map;
+import me.jxl.kiosk.plugins.PluginHost;
+
+/**
+ * The reading, as Home Assistant entities.
+ *
+ * <p>Null is published as null throughout, never as zero. The API is explicit
+ * that every field under {@code client} can be null and that null means "not
+ * known" — and a 0 published for an unknown would be averaged into a Home
+ * Assistant long-term statistic as though someone had measured it. An unknown
+ * entity state is honest and a graph gap is the correct picture.
+ *
+ * <p>{@code update_bytes_per_min} is null until a connection is a full minute
+ * old, by the API's own design, because a rate extrapolated from four seconds
+ * is an opening burst multiplied by fifteen. Publishing that as a number would
+ * launder a disclaimer into a data point.
+ */
+final class StripperEntities {
+
+    private StripperEntities() {}
+
+    static void publish(PluginHost host, StripperStatus status) {
+        // Whether the proxy is in front of this panel at all. The one field
+        // worth a binary sensor: everything else is a measurement.
+        binary(host, "in_path", "Stripper in path", "connectivity", status.inPath());
+
+        text(host, "state", "Stripper state", stateText(status));
+        text(host, "version", "Stripper version", status.version);
+        text(host, "dashboard", "Stripper dashboard", status.dashboard);
+        text(host, "attributed_via", "Stripper attribution", status.attributedVia);
+        text(host, "trimming", "Stripper trimming", trimmingText(status));
+
+        number(host, "entities_served", "Entities served", null, status.entitiesServed);
+        number(host, "connections", "Stripper connections", null, status.connections);
+        number(host, "not_sent_pct", "Traffic not sent", "%", status.notSentPct);
+        number(host, "not_sent_bytes", "Bytes not sent", "B", status.notSentBytes);
+        number(host, "from_ha_bytes", "Bytes from Home Assistant", "B", status.fromHaBytes);
+        number(host, "to_browser_bytes", "Bytes to this panel", "B", status.toBrowserBytes);
+        number(host, "update_bytes_per_min", "Update throughput", "B/min", status.updateBytesPerMin);
+        number(host, "first_payload_ms", "First entity data", "ms", status.firstPayloadMsToData);
+        number(host, "first_payload_bytes", "First payload size", "B", status.firstPayloadBytes);
+        number(host, "uptime_sec", "Stripper uptime", "s", status.uptimeSec);
+    }
+
+    /** Nothing is known: publish unknowns rather than leaving stale numbers. */
+    static void publishUnknown(PluginHost host) {
+        binary(host, "in_path", "Stripper in path", "connectivity", null);
+        text(host, "state", "Stripper state", "No Home Assistant URL");
+        for (final String key : new String[] {
+            "version", "dashboard", "attributed_via", "trimming",
+        }) {
+            text(host, key, key, null);
+        }
+        for (final String key : new String[] {
+            "entities_served", "connections", "not_sent_pct", "not_sent_bytes",
+            "from_ha_bytes", "to_browser_bytes", "update_bytes_per_min",
+            "first_payload_ms", "first_payload_bytes", "uptime_sec",
+        }) {
+            number(host, key, key, null, null);
+        }
+    }
+
+    /**
+     * The four states as words, so an automation can branch on them without
+     * reading two booleans and inferring the third case.
+     */
+    static String stateText(StripperStatus status) {
+        switch (status.state) {
+            case TRIMMED:
+                return status.idle() ? "in path, idle" : "trimming";
+            case DIRECT:
+                return "direct";
+            case UNREACHABLE:
+                return "unreachable";
+            default:
+                return "error";
+        }
+    }
+
+    /**
+     * The trim flags as a short list of the ones that are on.
+     *
+     * <p>A text sensor rather than one entity per flag: ten booleans that
+     * change about never would be ten rows of noise in every entity list, and
+     * the question people ask is "what is it cutting", not "is it cutting
+     * translations specifically".
+     */
+    static String trimmingText(StripperStatus status) {
+        if (!status.inPath() || status.trimming.isEmpty()) return null;
+        final StringBuilder on = new StringBuilder();
+        for (final Map.Entry<String, Boolean> entry : status.trimming.entrySet()) {
+            if (!Boolean.TRUE.equals(entry.getValue())) continue;
+            if (on.length() > 0) on.append(", ");
+            on.append(entry.getKey());
+        }
+        if (on.length() == 0) return "nothing";
+        // The host caps a text state at 512 characters; ten short keys cannot
+        // reach that, but the schema is additive and this is cheap insurance.
+        return on.length() <= 512 ? on.toString() : on.substring(0, 512);
+    }
+
+    // ---- Host wrappers, each tolerant of an older host ----
+
+    private static void number(PluginHost host, String key, String name, String unit, Number state) {
+        try {
+            final Map<String, Object> metadata = new HashMap<>();
+            if (unit != null) metadata.put("unit", unit);
+            metadata.put("accuracyDecimals", 0);
+            host.publishSensor(key, name, metadata, state == null ? null : state.doubleValue());
+        } catch (Throwable ignored) {
+            // Entities unavailable on this host; the status tile still works.
+        }
+    }
+
+    private static void text(PluginHost host, String key, String name, String state) {
+        try {
+            host.publishTextSensor(key, name, state);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void binary(PluginHost host, String key, String name, String deviceClass, Boolean state) {
+        try {
+            host.publishBinarySensor(key, name, deviceClass, state);
+        } catch (Throwable ignored) {
+        }
+    }
+}

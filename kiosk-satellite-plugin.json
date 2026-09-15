@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "stripper-plugin",
+  "name": "WebSocket Stripper",
+  "version": "0.1.0",
+  "minAndroidSdk": 24,
+  "entryClass": "me.jxl.kiosk.plugins.stripper.StripperPlugin",
+  "description": "Reports what the HA WebSocket Stripper is doing in front of this panel: whether it is in the path at all, what it is trimming, how many entities this panel is served, and how much traffic it was spared. Publishes the numbers as Home Assistant entities and a status tile on the Overview. Read-only diagnostics; nothing here changes how the panel behaves.",
+  "author": "David Coulson",
+  "license": "Apache-2.0",
+  "capabilities": [
+    "host.read",
+    "entities"
+  ],
+  "settings": [
+    {
+      "key": "baseUrl",
+      "type": "string",
+      "title": "Stripper base URL",
+      "description": "Leave empty to use the panel's own Home Assistant URL, which is normally right: the Stripper answers on the same host and port the dashboards are loaded from. Set this only when the panel reaches the proxy somewhere else.",
+      "default": "",
+      "group": "Connection"
+    },
+    {
+      "key": "refreshSeconds",
+      "type": "number",
+      "title": "Refresh interval",
+      "description": "How often to re-read the status. The endpoint takes a stats snapshot per call, so this is deliberately slow; 0 refreshes only when something asks. Entities go stale between refreshes rather than wrong — they carry the time they were read.",
+      "min": 0,
+      "max": 900,
+      "step": 15,
+      "default": 120,
+      "unit": "s",
+      "group": "Connection"
+    },
+    {
+      "key": "timeoutMs",
+      "type": "number",
+      "title": "Request timeout",
+      "description": "A diagnostics read must not hang the plugin when the proxy is busy. Past this, the read is abandoned and the previous numbers are left alone.",
+      "min": 500,
+      "max": 10000,
+      "step": 250,
+      "default": 2000,
+      "unit": "ms",
+      "group": "Connection"
+    }
+  ],
+  "commands": [
+    {
+      "id": "refresh",
+      "title": "Refresh now",
+      "description": "Read the Stripper status immediately, without waiting for the next interval."
+    }
+  ]
+}
