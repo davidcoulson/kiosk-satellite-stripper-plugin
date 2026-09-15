@@ -23,6 +23,8 @@ with tempfile.TemporaryDirectory(prefix='stripper-plugin-test-') as directory:
     subprocess.run([tool('javac'), '--release', '8', '-d', directory, *map(str, sources)], check=True)
     subprocess.run([tool('java'), '-ea', '-cp', directory, 'StripperUrlTest'], check=True)
     subprocess.run([tool('java'), '-ea', '-cp', directory, 'StripperStatusTest'], check=True)
+    subprocess.run([tool('java'), '-ea', '-cp', directory,
+                    'me.jxl.kiosk.plugins.stripper.StripperEntitiesTest'], check=True)
     subprocess.run([tool('java'), '-ea', '-cp', directory, 'ManifestContractTest'], check=True)
 
 subprocess.run([sys.executable, str(root / 'tools/test_android_sdk.py')], check=True)

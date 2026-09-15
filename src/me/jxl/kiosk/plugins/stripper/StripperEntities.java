@@ -65,8 +65,14 @@ final class StripperEntities {
     }
 
     /**
-     * The four states as words, so an automation can branch on them without
-     * reading two booleans and inferring the third case.
+     * The states as words, so an automation can branch on them without
+     * reading two booleans and inferring the rest.
+     *
+     * <p>Every state the plugin distinguishes gets its own word. Folding the
+     * two refusals into "error" was worse than useless: the tile read "Needs
+     * an access token" while the entity an automation watches said "error",
+     * so the panel told you what to do and Home Assistant told you something
+     * had broken.
      */
     static String stateText(StripperStatus status) {
         switch (status.state) {
@@ -74,6 +80,10 @@ final class StripperEntities {
                 return status.idle() ? "in path, idle" : "trimming";
             case DIRECT:
                 return "direct";
+            case UNAUTHORISED:
+                return "needs a token";
+            case BLOCKED:
+                return "refused";
             case UNREACHABLE:
                 return "unreachable";
             default:
@@ -90,7 +100,10 @@ final class StripperEntities {
      * translations specifically".
      */
     static String trimmingText(StripperStatus status) {
-        if (!status.inPath() || status.trimming.isEmpty()) return null;
+        // reporting(), not inPath(): a refusal proves the proxy is there but
+        // carries no trim flags, and an empty list would read as "cutting
+        // nothing" rather than "did not say".
+        if (!status.reporting() || status.trimming.isEmpty()) return null;
         final StringBuilder on = new StringBuilder();
         for (final Map.Entry<String, Boolean> entry : status.trimming.entrySet()) {
             if (!Boolean.TRUE.equals(entry.getValue())) continue;

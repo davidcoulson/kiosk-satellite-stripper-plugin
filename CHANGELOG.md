@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1
+
+- **The state sensor now agrees with the tile.** 0.2.0 gave `401` and `403`
+  their own tile wording but left the `Stripper state` text sensor folding both
+  into `error`, so the panel read "Needs an access token" while an automation
+  watching the entity saw something break. The states are now `trimming`,
+  `in path, idle`, `direct`, `needs a token`, `refused`, `unreachable` and
+  `error`, and `error` means only a genuinely unexpected reply.
+- The trim list is null rather than empty on a refusal: the proxy did not say
+  what it is cutting, which is not the same as cutting nothing.
+
 ## 0.2.0
 
 The status endpoint requires a Home Assistant access token from Stripper build
