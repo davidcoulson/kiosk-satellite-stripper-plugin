@@ -46,7 +46,23 @@ public final class StripperEntitiesTest {
         // say" and "cutting nothing" are different answers.
         eq(null, StripperEntities.trimmingText(StripperStatus.unauthorised()));
         eq(null, StripperEntities.trimmingText(StripperStatus.direct()));
-        eq("entities", StripperEntities.trimmingText(trimming));
+        // One per line and in words: the comma-separated run of API keys
+        // wrapped across three ragged lines on a settings row and had to be
+        // read rather than scanned.
+        final StripperStatus many = StripperStatus.trimmed("{"
+            + "\"stripper\":{\"running\":true},"
+            + "\"trimming\":{\"entities\":true,\"by_dashboard\":true,"
+            + "\"extra_modules\":true,\"themes\":false,\"compress_websocket\":true},"
+            + "\"client\":{\"connections\":1}}");
+        eq("Entities\nBy dashboard\nExtra modules\nCompress websocket",
+            StripperEntities.trimmingText(many));
+
+        eq("Entities", StripperEntities.trimmingText(trimming));
+
+        // Every flag off is an answer, and not the same as no reading.
+        eq("nothing", StripperEntities.trimmingText(StripperStatus.trimmed("{"
+            + "\"stripper\":{\"running\":true},\"trimming\":{\"entities\":false},"
+            + "\"client\":{\"connections\":1}}")));
 
         System.out.println("PASS: entity states \u2014 every state its own word, "
             + "the refusals not reported as errors, and no trim list without a reading.");

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1
+
+- **What is being trimmed reads as a list, in words.** It was a
+  comma-separated run of API keys that wrapped across three ragged
+  right-aligned lines — `entities, by_dashboard, registries, resources,
+  extra_modules, ...` — and had to be read rather than scanned. Now one per
+  line, and `extra_modules` reads as "Extra modules": that is the payload's
+  spelling, not a word for whoever is standing at the panel. The conversion is
+  mechanical rather than a lookup table, so a flag added to the API later reads
+  sensibly here without a release.
+
 ## 0.3.0
 
 Readable figures. **Renames three entities** — see the note at the end.

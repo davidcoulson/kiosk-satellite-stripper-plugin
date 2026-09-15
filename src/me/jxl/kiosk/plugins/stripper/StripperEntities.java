@@ -99,12 +99,20 @@ final class StripperEntities {
     }
 
     /**
-     * The trim flags as a short list of the ones that are on.
+     * The trim flags that are on, one per line, in words.
      *
      * <p>A text sensor rather than one entity per flag: ten booleans that
      * change about never would be ten rows of noise in every entity list, and
      * the question people ask is "what is it cutting", not "is it cutting
      * translations specifically".
+     *
+     * <p>One per line because the alternative was a comma-separated run that
+     * wrapped across three ragged right-aligned lines and had to be read
+     * rather than scanned. The host renders a multi-line reading
+     * left-aligned, so a list looks like a list.
+     *
+     * <p>In words, not API keys: {@code extra_modules} is the payload's
+     * spelling, and this row is read by whoever is standing at the panel.
      */
     static String trimmingText(StripperStatus status) {
         // reporting(), not inPath(): a refusal proves the proxy is there but
@@ -114,13 +122,25 @@ final class StripperEntities {
         final StringBuilder on = new StringBuilder();
         for (final Map.Entry<String, Boolean> entry : status.trimming.entrySet()) {
             if (!Boolean.TRUE.equals(entry.getValue())) continue;
-            if (on.length() > 0) on.append(", ");
-            on.append(entry.getKey());
+            if (on.length() > 0) on.append('\n');
+            on.append(label(entry.getKey()));
         }
         if (on.length() == 0) return "nothing";
-        // The host caps a text state at 512 characters; ten short keys cannot
+        // The host caps a text state at 512 characters; ten short lines cannot
         // reach that, but the schema is additive and this is cheap insurance.
         return on.length() <= 512 ? on.toString() : on.substring(0, 512);
+    }
+
+    /**
+     * An API key as a person would read it: {@code extra_modules} becomes
+     * "Extra modules". Deliberately mechanical -- underscores to spaces, one
+     * leading capital -- rather than a lookup table, so a flag added to the
+     * payload later reads sensibly here without a release.
+     */
+    private static String label(String key) {
+        final String spaced = key.replace('_', ' ');
+        if (spaced.isEmpty()) return spaced;
+        return Character.toUpperCase(spaced.charAt(0)) + spaced.substring(1);
     }
 
     // ---- Host wrappers, each tolerant of an older host ----
